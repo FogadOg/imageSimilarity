@@ -104,9 +104,12 @@ class SiameseModel(nn.Module):
   def forward(self, image):
     return self.sequential(image)
 
-model=SiameseModel(3, 8, 2)
-image=torch.rand(3,512,512)
-model(image).shape
+siameseModel=SiameseModel(3, 8, 2)
+
+"""##Optimizer & Loss"""
+
+criterion = nn.ContrastiveLoss()
+optimizer = torch.optim.Adam(siameseModel.parameters(), lr=0.001)
 
 def parametersCount(model):
   return sum(p.numel() for p in model.parameters() if p.requires_grad)
