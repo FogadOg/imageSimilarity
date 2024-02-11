@@ -9,6 +9,33 @@ Original file is located at
 
 import torch
 from torch import nn
+from torch.utils.data import Dataset, DataLoader
+
+"""#Dataset/Dataloader"""
+
+BATCH_SIZE=16
+
+class CustomDataset(Dataset):
+  def __init__(self):
+    self.image1=torch.rand(64, 3, 512, 512)
+    self.image2=torch.rand(64, 3, 512, 512)
+    self.label=torch.rand(64, 1)
+
+  def __len__(self):
+    return len(self.label)
+
+  def __getitem__(self, idx):
+    return self.image1[idx], self.image2[idx], self.label[idx]
+dataset=CustomDataset()
+
+trainSplit=.8
+
+trainSize = int(trainSplit * len(dataset))
+testSize = len(dataset) - trainSize
+trainDataset, testDataset = torch.utils.data.random_split(dataset, [trainSize, testSize])
+
+trainDataloader=DataLoader(trainDataset,batch_size=BATCH_SIZE,shuffle=True)
+testDataloader=DataLoader(testDataset,batch_size=BATCH_SIZE,shuffle=True)
 
 """#Model
 
@@ -39,17 +66,17 @@ class LinearLayer(nn.Module):
 """##Main Model"""
 
 class SiameseModel(nn.Module):
-  def __init__(self):
+  def __init__(self, input, hiddenSize ,output):
     super(SiameseModel, self).__init__()
 
     self.sequential=nn.Sequential(
-      ConvLayer(3, 64, 11),
+      ConvLayer(input, hiddenSize, 11),
 
       nn.LocalResponseNorm(5,alpha=0.0001,beta=0.75,k=2),
 
       nn.MaxPool2d(2),
 
-      ConvLayer(64, 64, 5),
+      ConvLayer(hiddenSize, hiddenSize, 5),
 
 
       nn.LocalResponseNorm(5,alpha=0.0001,beta=0.75,k=2),
@@ -58,9 +85,8 @@ class SiameseModel(nn.Module):
 
       nn.Dropout(.3),
 
-      ConvLayer(64, 64, 3),
-
-      ConvLayer(64, 64, 3),
+      ConvLayer(hiddenSize, hiddenSize, 3),
+      ConvLayer(hiddenSize, hiddenSize, 3),
 
       nn.MaxPool2d(2),
 
@@ -72,12 +98,16 @@ class SiameseModel(nn.Module):
       nn.Dropout(.3),
 
 
-      LinearLayer(1024, 2)
+      LinearLayer(1024, output)
 
     )
   def forward(self, image):
     return self.sequential(image)
 
-model=SiameseModel()
+model=SiameseModel(3, 8, 2)
 image=torch.rand(3,512,512)
 model(image).shape
+
+def parametersCount(model):
+  return sum(p.numel() for p in model.parameters() if p.requires_grad)
+print(f"model parameters: {parametersCount(model):,}")
