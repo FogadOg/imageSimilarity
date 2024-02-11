@@ -9,6 +9,7 @@ Original file is located at
 
 import torch
 from torch import nn
+from torch.functional import F
 from torch.utils.data import Dataset, DataLoader
 
 """#Dataset/Dataloader"""
@@ -63,6 +64,17 @@ class LinearLayer(nn.Module):
   def forward(self, input):
     return self.sequential(input)
 
+class ContrastiveLoss(nn.Module):
+    def __init__(self, margin=2.0):
+      super(ContrastiveLoss, self).__init__()
+      self.margin = margin
+
+    def forward(self, output1, output2, label):
+      euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
+      loss_contrastive = torch.mean((1-label) * torch.pow(euclidean_distance, 2) +
+                                    (label) * torch.pow(torch.clamp(self.margin - euclidean_distance, min=0.0), 2))
+      return loss_contrastive
+
 """##Main Model"""
 
 class SiameseModel(nn.Module):
@@ -108,7 +120,7 @@ siameseModel=SiameseModel(3, 8, 2)
 
 """##Optimizer & Loss"""
 
-criterion = nn.ContrastiveLoss()
+criterion = ContrastiveLoss()
 optimizer = torch.optim.Adam(siameseModel.parameters(), lr=0.001)
 
 def parametersCount(model):
