@@ -12,15 +12,18 @@ from torch import nn
 from torch.functional import F
 from torch.utils.data import Dataset, DataLoader
 
+from google.colab import drive
+drive.mount('/content/drive')
+
 """#Dataset/Dataloader"""
 
 BATCH_SIZE=16
 
 class CustomDataset(Dataset):
   def __init__(self):
-    self.image1=torch.rand(64, 3, 512, 512)
-    self.image2=torch.rand(64, 3, 512, 512)
-    self.label=torch.rand(64, 1)
+    self.image1=torch.rand(2, 3, 256, 256)
+    self.image2=torch.rand(2, 3, 256, 256)
+    self.label=torch.rand(2, 1)
 
   def __len__(self):
     return len(self.label)
@@ -44,10 +47,10 @@ testDataloader=DataLoader(testDataset,batch_size=BATCH_SIZE,shuffle=True)
 """
 
 class ConvLayer(nn.Module):
-  def __init__(self, input, output, kernal, stride=1):
+  def __init__(self, input, output, kernal, stride=1, padding=1):
     super(ConvLayer, self).__init__()
     self.sequential=nn.Sequential(
-      nn.Conv2d(input, output, kernal, stride),
+      nn.Conv2d(input, output, kernal, stride, padding),
       nn.ReLU(),
     )
 
@@ -82,13 +85,13 @@ class SiameseModel(nn.Module):
     super(SiameseModel, self).__init__()
 
     self.sequential=nn.Sequential(
-      ConvLayer(input, hiddenSize, 11),
+      ConvLayer(input, hiddenSize, 11, 2),
 
       nn.LocalResponseNorm(5,alpha=0.0001,beta=0.75,k=2),
 
       nn.MaxPool2d(2),
 
-      ConvLayer(hiddenSize, hiddenSize, 5),
+      ConvLayer(hiddenSize, hiddenSize, 5, 2),
 
 
       nn.LocalResponseNorm(5,alpha=0.0001,beta=0.75,k=2),
@@ -97,8 +100,8 @@ class SiameseModel(nn.Module):
 
       nn.Dropout(.3),
 
-      ConvLayer(hiddenSize, hiddenSize, 3),
-      ConvLayer(hiddenSize, hiddenSize, 3),
+      ConvLayer(hiddenSize, hiddenSize, 3, 2),
+      ConvLayer(hiddenSize, hiddenSize, 3, 2),
 
       nn.MaxPool2d(2),
 
@@ -106,7 +109,7 @@ class SiameseModel(nn.Module):
 
       nn.Flatten(),
 
-      LinearLayer(3481, 1024),
+      LinearLayer(32, 1024),
       nn.Dropout(.3),
 
 
@@ -118,11 +121,65 @@ class SiameseModel(nn.Module):
 
 siameseModel=SiameseModel(3, 8, 2)
 
-"""##Optimizer & Loss"""
+"""#Optimizer & Loss"""
 
-criterion = ContrastiveLoss()
+loss = ContrastiveLoss()
 optimizer = torch.optim.Adam(siameseModel.parameters(), lr=0.001)
+
+"""#Training"""
 
 def parametersCount(model):
   return sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"model parameters: {parametersCount(model):,}")
+print(f"model parameters: {parametersCount(siameseModel):,}")
+
+class Train():
+  def __init__(self, trainDataloader:DataLoader, testDataloader:DataLoader, model:nn.Module, epochs:int, optimizer:torch.optim, loss:nn.Module, modelName:str):
+    self.trainDataloader=trainDataloader
+    self.testDataloader=testDataloader
+
+    self.model=model
+    self.epochs=epochs
+
+    self.optimizer=optimizer
+    self.loss=loss
+
+    self.modelName=modelName
+
+    self.train()
+
+  def train(self):
+    for epoch in range(self.epochs):
+      for image1, image2, label in self.trainDataloader:
+        self.optimizer.zero_grad()
+        trainLoss=self.runForDataset(image1, image2, label)
+        trainLoss.backward()
+
+        self.optimizer.step()
+
+
+      for image1, image2, label in self.testDataloader:
+        testLoss=self.runForDataset(image1, image2, label)
+
+      torch.save(self.model.state_dict(), f"/content/drive/MyDrive/pytorchModels/{self.modelName}.pth")
+      print(f"epoch: {epoch}, train loss: {trainLoss:.2f} | test loss: {testLoss:.2f} ")
+
+  def runForDataset(self, image1, image2, label):
+    imagePrediction1=self.model(image1)
+    imagePrediction2=self.model(image2)
+
+    loss=self.loss(imagePrediction1, imagePrediction2, label)
+
+    return loss
+
+
+  def accuracy(self,predictions,targets):
+    assert predictions.shape == targets.shape, "Shapes of predictions and targets must match."
+
+    num_correct = (predictions == targets).sum().item()
+
+    total_samples = targets.numel()
+    accuracy_value = num_correct / total_samples
+    return accuracy_value*100
+
+
+Train(trainDataloader, testDataloader, siameseModel, 10, optimizer, loss, "siameseModel")
